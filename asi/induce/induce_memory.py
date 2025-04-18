@@ -8,7 +8,7 @@ from datasets import load_dataset  # Import load_dataset from the datasets libra
 # %% Induce Memory
 def get_test_query(hf_path, n=1):
     # directly load from huggingface dataset
-    dataset = load_dataset(hf_path, trust_remote_code=True, token=os.getenv("HF_TOKEN"))
+    dataset = load_dataset(hf_path, trust_remote_code=True, token=os.getenv("HF_READ_TOKEN"))
     dataset = dataset['train']
 
     # collect n objectives and corresponding queries
@@ -26,9 +26,37 @@ def get_test_query(hf_path, n=1):
             task_query[task_name] += f"<think>{example['thought']}</think>\n<action>{example['action']}</action>\n"
             i += 1
     return '\n'.join(task_query.values())
+
+def get_test_query_via_complete_trajectory(hf_path, n=1):
+    # directly load from huggingface dataset
+    dataset = load_dataset(hf_path, trust_remote_code=True, token=os.getenv("HF_READ_TOKEN"))
+    dataset = dataset['train']
+
+    # collect n objectives and corresponding queries
+    goal_trajectory = {}
+    i = 0
+    while i < len(dataset):
+        if len(goal_trajectory.keys()) >= n:
+            break
+        goal_id = dataset[i]['goal_id']
+        if goal_id not in goal_trajectory:
+            goal = dataset[i]['goal']
+            goal_trajectory[goal_id] = f"## Task: {goal}\n"
+        j = 1
+        while dataset[i]['goal_id'] == goal_id:
+            goal_trajectory[goal_id] += f"## Example {j}:\n"
+            goal_trajectory[goal_id] += dataset[i]['trajectory'] + '\n\n'
+            i += 1
+            j += 1
+    return '\n'.join(goal_trajectory.values())
     
 def induce_workflows(hf_path) -> list[str]:
-    test_query = get_test_query(hf_path)
+    if hf_path == "XueyingJia/deduplicated_Auprva_exploration_trajectory":
+        # get test query from huggingface dataset
+        test_query = get_test_query_via_complete_trajectory(hf_path)
+    else:
+        # get test query from huggingface dataset
+        test_query = get_test_query(hf_path)
     if test_query=='': return []
 
     messages = [{"role": "system", "content": open(args.sys_msg_path).read()}]
