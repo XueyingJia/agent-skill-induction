@@ -3,58 +3,33 @@ import json
 import litellm
 import argparse
 from induce.utils import get_output_dir, get_task_id
+from datasets import load_dataset  # Import load_dataset from the datasets library
 
 # %% Induce Memory
+def get_test_query(hf_path, n=1):
+    # directly load from huggingface dataset
+    dataset = load_dataset(hf_path, trust_remote_code=True, token=os.getenv("HF_TOKEN"))
+    dataset = dataset['train']
 
-def get_example_query_cleaned(index: int, result_dir: str, config_dir: str) -> str:
-    """Get the string for a past example experience, without invalid actions."""
-    # get config
-    cid = get_task_id(result_dir)
-    config_path = os.path.join(config_dir, f"{cid}.json")
-    config = json.load(open(config_path))
-
-    # get instruction
-    subtask_inst_path = os.path.join(result_dir, "instruction.txt")
-    if os.path.exists(subtask_inst_path):  # sub task
-        instruction = open(subtask_inst_path, 'r').read()
-        task = instruction
-    else:  # full task
-        instruction = config["intent"]
-        task = config["intent_template"]
-
-    steps = json.load(open(os.path.join(result_dir, "cleaned_steps.json")))
-    if len(steps) > 0:
-        print(f"Collected #{len(steps)} valid steps.")
-        steps = '\n'.join(steps)
-        ex = f"### Example {index} ({config['task_id']}): {instruction}\n{steps}"
-    else:
-        ex = None
-
-    return ex, task
+    # collect n objectives and corresponding queries
+    task_query = {}
+    i = 0
+    while i < len(dataset):
+        if len(task_query.keys()) >= n:
+            break
+        task_name = dataset[i]['task_name']
+        if task_name not in task_query:
+            objective = dataset[i]['objective']
+            task_query[task_name] = f"## Task: {objective}\n"
+        while dataset[i]['task_name'] == task_name:
+            example = dataset[i]
+            task_query[task_name] += f"<think>{example['thought']}</think>\n<action>{example['action']}</action>\n"
+            i += 1
+    return '\n'.join(task_query.values())
     
-
-def get_test_query(result_dir_list: str, config_dir: str) -> str | None:
-    """Transform each result log into an input experience and form a query."""
-    task = None
-    examples = []
-    for rdir in result_dir_list:  # e.g., ['results/webarena.110_2_0', 'results/webarena.111_2_1']
-        ex, task = get_example_query_cleaned(len(examples)+1, rdir, config_dir)
-        if ex is None: continue
-        examples.append(ex)
-    
-    if len(examples) < 1:
-        return None
-    query = f"## Task: {task}\n" + '\n\n'.join(examples)
-    return query
-
-
-def induce_workflows() -> list[str]:
-    result_dir_list = args.result_id_list
-    # result_dir_list = get_result_dirs(args.results_dir, args.result_id_list, args.template_id, args.config_dir)
-    test_query = get_test_query(result_dir_list, args.config_dir)
-    if test_query is None: return []
-    with open(args.test_query_path, 'w') as fw:
-        fw.write(test_query)
+def induce_workflows(hf_path) -> list[str]:
+    test_query = get_test_query(hf_path)
+    if test_query=='': return []
 
     messages = [{"role": "system", "content": open(args.sys_msg_path).read()}]
     messages += [{"role": "user", "content": open(args.instruction_path).read()}]
@@ -199,21 +174,18 @@ if __name__ == "__main__":
     parser.add_argument("--num_responses", type=int, default=1, help="Number of responses to generate.")
     parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for sampling.")
 
-    parser.add_argument("--sys_msg_path", type=str, default="induce/promptsystem_message_memory.txt")
-    parser.add_argument("--instruction_path", type=str, default="induce/promptinstruction_memory.txt")
-    parser.add_argument("--few_shot_path", type=str, default="induce/promptshopping_memory.md")
-    parser.add_argument("--test_query_path", type=str, default="induce/prompttest_query.txt")
+    parser.add_argument("--sys_msg_path", type=str, default="induce/prompt/system_message_memory.txt")
+    #TODO: deecide you want to have how many steps in the induced workflows, fine with 2-5 fow now
+    parser.add_argument("--instruction_path", type=str, default="induce/prompt/instruction_memory.txt")
+    parser.add_argument("--few_shot_path", type=str, default="induce/prompt/shopping_memory.md")
+    parser.add_argument("--test_query_path", type=str, default="XueyingJia/nnetnav-wa-trajectory")
 
-    parser.add_argument("--template_id", type=str, default=None)
     parser.add_argument("--website", type=str, required=True,
-                        choices=["shopping", "admin", "reddit", "gitlab", "map"])
-    parser.add_argument("--config_dir", type=str, default="config_files")
-    parser.add_argument("--results_dir", type=str, default="results")
-    parser.add_argument("--result_id_list", type=str, nargs="+", default=None, help="E.g., '110_2_0 111_1'.")
+                        choices=["shopping", "admin", "reddit", "gitlab", "map", "mixed"])
 
+    # TODO: write to huggingface instead of local files, remove eval
     parser.add_argument("--write_workflow_path", type=str, default=None)
-    parser.add_argument("--write_tests_dir", type=str, default="debug_actions")
-    parser.add_argument("--eval_with_gold", action="store_true")
+    parser.add_argument("--output_dir", type=str, default="workflows")
     args = parser.parse_args()
 
     if args.model == "claude":
@@ -223,23 +195,26 @@ if __name__ == "__main__":
     if args.write_workflow_path is None:
         args.write_workflow_path = os.path.join("workflows", f"{args.website}.txt")
 
-    # decide path for entire model output
-    args = get_output_dir(args, key="workflow")
-    if os.path.exists(args.output_dir):
-        print(f"Output directory already exists: {args.output_dir}")
-        names = sorted(os.listdir(args.output_dir), key=lambda x: int(x.split('.')[0]))
-        paths = [os.path.join(args.output_dir, f) for f in names]
-        responses = [open(p, 'r').read() for p in paths]
-    else:  # induce new actions
-        os.makedirs(args.output_dir, exist_ok=True)
-        responses = induce_workflows()
+    # # decide path for entire model output
+    # args = get_output_dir(args, key="workflow")
+    # if os.path.exists(args.output_dir):
+    #     print(f"Output directory already exists: {args.output_dir}")
+    #     names = sorted(os.listdir(args.output_dir), key=lambda x: int(x.split('.')[0]))
+    #     paths = [os.path.join(args.output_dir, f) for f in names]
+    #     responses = [open(p, 'r').read() for p in paths]
+    # else:  # induce new actions
+    
+    os.makedirs(args.output_dir, exist_ok=True)
+    responses = induce_workflows(args.test_query_path)
     
     assert len(responses) == 1, "Only support one response for now."
+    print('induced workflow:')
+    print(responses[0])
     
     # write actions and run tests
-    for i, resp in enumerate(responses):
-        print(f"\n\n** Start Evaluating Response {i} **")
-        write_workflows(resp)
+    # for i, resp in enumerate(responses):
+    #     print(f"\n\n** Start Evaluating Response {i} **")
+    #     write_workflows(resp)
 
-        print(f"**Finish Evaluating Response {i} **\n\n")
-        cont = input("Continue? [y/n]")
+    #     print(f"**Finish Evaluating Response {i} **\n\n")
+    #     cont = input("Continue? [y/n]")
