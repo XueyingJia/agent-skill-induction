@@ -4,6 +4,7 @@ docs/src/generated/
 asi/autoeval/log
 asi/debug_actions
 asi/outputs
+asi/config_files
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -150,3 +151,7 @@ results/
 
 # assistantbench
 tests/assistantbench/assistantbench-predictions-test.jsonl
+
+# RAG
+asi/chroma_db_all/
+asi/retrieval_outputs/
