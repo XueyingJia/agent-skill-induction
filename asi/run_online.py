@@ -3,7 +3,8 @@ import json
 import argparse
 import subprocess
 from subprocess import Popen
-from chroma_retriever import retrieve_workflow
+from collections import defaultdict
+
 
 def parse_task_ids(task_id_str: str) -> list[str]:
     chunks = [c.strip() for c in task_id_str.split(",")]
@@ -12,6 +13,62 @@ def parse_task_ids(task_id_str: str) -> list[str]:
         s, e = [int(n.strip()) for n in c.split("-")]
         task_id_list.extend([str(i) for i in range(s, e+1)])
     return task_id_list
+
+def load_tasks_by_website(config_dir='config_files', website=None, max_tasks=30):
+    """
+    Load task IDs from JSON files in config_files directory, filtered by website.
+    
+    Args:
+        config_dir (str): Directory containing task configuration JSON files
+        website (str): Filter tasks by website category
+        max_tasks (int): Maximum number of tasks to load per website category
+    
+    Returns:
+        list: List of task IDs that match the website filter
+    """
+    task_ids = []
+    count = 0
+    
+    # Ensure the directory exists
+    if not os.path.exists(config_dir):
+        print(f"Error: Directory '{config_dir}' not found")
+        return []
+    
+    # Get all JSON files and sort them numerically
+    try:
+        config_files = [f for f in os.listdir(config_dir) if f.endswith('.json')]
+        config_files.sort(key=lambda x: int(os.path.splitext(x)[0]) if os.path.splitext(x)[0].isdigit() else float('inf'))
+    except Exception as e:
+        print(f"Error listing files in '{config_dir}': {e}")
+        return []
+    
+    # Process each file
+    for file_name in config_files:
+        if count >= max_tasks:
+            break
+            
+        file_path = os.path.join(config_dir, file_name)
+        try:
+            with open(file_path, 'r') as f:
+                config = json.load(f)
+            
+            # Check if the config has the 'sites' field
+            if 'sites' not in config:
+                continue
+                
+            # Get the site category
+            sites = config.get('sites', [])
+            
+            # Check if task matches the website filter
+            if len(sites) == 1 and sites[0] == website:
+                task_id = os.path.splitext(file_name)[0]
+                task_ids.append(task_id)
+                count += 1
+        except Exception as e:
+            print(f"Error loading {file_path}: {e}")
+
+    print(f"Loaded {len(task_ids)} task IDs for website '{website}'")
+    return task_ids
 
 # %% Baseline
 
@@ -39,9 +96,10 @@ def run_vanilla():
 def run_awm():
 
     debug_mode = True
-    task_id_list = parse_task_ids(args.task_ids)
+    task_id_list = load_tasks_by_website(config_dir='config_files', website=args.website, max_tasks=30)
 
     for tid in task_id_list:
+
         # step 0: retrieve workflows
         with open(f"config_files/{tid}.json", 'r') as f:
             config_data = json.load(f)
@@ -90,19 +148,16 @@ def run_awm():
         process.wait()  # output 'clean_steps.json'
         if debug_mode:
             input("[3.1] Completed clean trajectory")
+        
 
         process = Popen([
             "python", "-m", "induce.induce_memory",
-            "--website", args.website,
+            "--website", 'all',
             "--result_id_list", f'results/webarena.{tid}'
         ])
         process.wait()  # write to 'workflows/{args.website}.txt'
         if debug_mode:
             input("[3.2] Completed induced workflow")
-
-        # intermediate supervision
-        if debug_mode:
-            cont = input("Continue? (y/n)")
 
 # %% ASI
 def run_asi():
