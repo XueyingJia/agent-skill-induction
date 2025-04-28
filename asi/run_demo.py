@@ -163,7 +163,11 @@ https://github.com/ServiceNow/AgentLab"""
         print(f"{key}: {val}")
     
     if args.rename_to is not None:
-        os.rename(exp_args.exp_dir, f"results/{args.rename_to}")
+        target_dir = f"results/{args.rename_to}"
+        if os.path.exists(target_dir):
+            import shutil
+            shutil.rmtree(target_dir)
+        os.rename(exp_args.exp_dir, target_dir)
 
 
 if __name__ == "__main__":
