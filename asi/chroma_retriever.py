@@ -14,8 +14,8 @@ def count_tokens(text):
 
 embeddings = OpenAIEmbeddings(
     model=os.getenv("EMBEDDING_MODEL"),
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
-    openai_api_base=os.getenv("OPENAI_API_BASE")
+    openai_api_key=os.getenv("LITELLM_API_KEY"),
+    openai_api_base=os.getenv("LITELLM_BASE_URL")
 )
 
 def save_results_to_file(results_data, query_tokens_used, retrieved_ids, file_name="retrieval_result.json"):
@@ -86,8 +86,7 @@ def retrieve_workflow(task_id, task_type, natural_language_description, use_all=
             "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             'query_tokens_used': query_tokens_used,
         }
-    else:
-        # Check if we're updating an existing workflow or adding a new one
+    else:      
         stats["vectordb_stats"][task_type]["query_tokens_used"] += query_tokens_used
         stats["vectordb_stats"][task_type]["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with open(metadata_file, 'w') as f:
