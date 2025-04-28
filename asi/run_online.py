@@ -3,6 +3,7 @@ import json
 import argparse
 import subprocess
 from subprocess import Popen
+from chroma_retriever import retrieve_workflow
 
 def parse_task_ids(task_id_str: str) -> list[str]:
     chunks = [c.strip() for c in task_id_str.split(",")]
@@ -36,29 +37,49 @@ def run_vanilla():
 # %% AWM
 
 def run_awm():
+
+    debug_mode = False
     task_id_list = parse_task_ids(args.task_ids)
 
     for tid in task_id_list:
+        # step 0: retrieve workflows
+        with open(f"config_files/{tid}.json", 'r') as f:
+            config_data = json.load(f)
+        natural_language_description = config_data["intent"]
+        process = Popen([
+            "python", "chroma_retriever.py",
+            "--task_id", tid,
+            "--task_type", "all",
+            "--natural_language_description", natural_language_description,
+            "--use_top_k",
+            "--distance_threshold", "1.0"
+        ])
+        process.wait()
+        if debug_mode:
+            input("[0] Completed workflow retrieval")
+
         # step 1: task solving
         process = Popen([
             "python", "run_demo.py",
             "--task_name", f"webarena.{tid}",
-            "--memory_path", f"workflows/{args.website}.txt",
+            "--memory_path", f"retrieval_outputs/retrieval_result_{tid}.json",
             "--headless",
         ])
         process.wait()
-        # input("[1] Completed task solving")
+        if debug_mode:
+            input("[1] Completed task solving")
 
         # step 2: eval traj
         process = Popen([
             "python", "-m", "autoeval.evaluate_trajectory",
-            "--result_dir", f"results/webarena.{tid}",
+            "--result_dir", f"results/webarena.{tid}"
         ])
         process.wait()
         path = f"results/webarena.{tid}/gpt-4o-2024-05-13_autoeval.json"
         is_correct = json.load(open(path))[0]["rm"]  # bool
         if not is_correct: continue
-        # input("[2] Completed evaluated trajectory (true)")
+        if debug_mode:
+            input("[2] Completed evaluated trajectory (true)")
 
         # step 3: induce workflows
         process = Popen([
@@ -66,18 +87,21 @@ def run_awm():
             "--clean_and_store", "--result_dir", f"results/webarena.{tid}",
         ])
         process.wait()  # output 'clean_steps.json'
-        # input("[3.1] Completed clean trajectory")
+        if debug_mode:
+            input("[3.1] Completed clean trajectory")
 
         process = Popen([
             "python", "-m", "induce.induce_memory",
-            "--website", args.website,
-            "--result_id_list", tid,
+            "--website", 'all',
+            "--result_id_list", f'results/webarena.{tid}'
         ])
         process.wait()  # write to 'workflows/{args.website}.txt'
-        # input("[3.2] Completed induced workflow")
+        if debug_mode:
+            input("[3.2] Completed induced workflow")
 
         # intermediate supervision
-        cont = input("Continue? (y/n)")
+        if debug_mode:
+            cont = input("Continue? (y/n)")
 
 # %% ASI
 def run_asi():
@@ -303,7 +327,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=str, required=True,
                         choices=["vanilla", "awm", "asi", "mem_asi", "veri_program", "veri_text"])
-    parser.add_argument("--website", type=str, required=True,
+    parser.add_argument("--website", type=str, required=True, default='all',
                         choices=["shopping", "admin", "reddit", "gitlab", "map"])
     parser.add_argument("--task_ids", type=str, required=True,
                         help="xxx-xxx,xxx-xxx")
