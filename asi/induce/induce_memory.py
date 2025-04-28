@@ -3,6 +3,13 @@ import json
 import litellm
 import argparse
 from induce.utils import get_output_dir, get_task_id
+import sys
+# Add the parent directory to sys.path to allow importing from asi
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Now import functions from chroma_retriever.py
+from chroma_retriever import add_workflow_to_db, delete_workflow_by_id, load_workflows_from_db
+
 
 # %% Induce Memory
 
@@ -55,11 +62,15 @@ def induce_workflows() -> list[str]:
     if test_query is None: return []
     with open(args.test_query_path, 'w') as fw:
         fw.write(test_query)
+    
+    # load existing workflows
+    existing_workflows = '\n'.join([workflow['content'] for workflow in load_workflows_from_db(args.website)])
+
 
     messages = [{"role": "system", "content": open(args.sys_msg_path).read()}]
     messages += [{"role": "user", "content": open(args.instruction_path).read()}]
     messages += [{"role": "user", "content": open(args.few_shot_path).read()}]
-    messages += [{"role": "user", "content": "## Existing Workflows\n" + open(args.write_workflow_path).read()}]
+    messages += [{"role": "user", "content": "## Existing Workflows\n" + existing_workflows}]
     messages += [{"role": "user", "content": test_query + '\n\n## Reusable Workflows'}]
 
     all_responses = []
@@ -99,7 +110,10 @@ from induce.utils import extract_code_pieces
 
 def get_workflow_name(workflow: str) -> str:
     """Get the name of the workflow."""
+    print(f"Workflow in get_workflow_name: {workflow}")
     name = workflow.split('\n')[0].lstrip("Task: ").strip()
+    if 'Action Trajectory' in name:
+        name = name.split('Action Trajectory')[0].strip()
     return name
 
 
@@ -111,6 +125,9 @@ def update_workflows(workflow: str, existing_workflows: list[str]) -> tuple[bool
         - If the existing workflow is better, keep the existing workflow => False, []
     """
     name = get_workflow_name(workflow)
+    print(f"Workflow in update_workflows: {workflow}")
+    print(f"Workflow in update_workflows: {name}")
+    print(f"Existing Workflows: {existing_workflows}")
     for ew in existing_workflows:
         ew_name = get_workflow_name(ew)
         messages = [
@@ -169,26 +186,44 @@ def write_workflows(response: str) -> None:
     workflows = extract_code_pieces(response, start='"""', end='"""', do_split=False)
     workflows = [w for w in workflows if ("Task" in w) and ("Action Trajectory" in w)]
 
+    print(f"Induced workflows: {workflows}")
+
     # load existing workflows
-    existing_workflows = open(args.write_workflow_path, 'r').read().split("Task:")
-    existing_workflows = ["Task:"+w for w in existing_workflows if len(w) > 0]
-    existing_workflows = [w.strip() for w in existing_workflows]
-    existing_workflows = [w for w in existing_workflows if len(w) > 0]
-    existing_workflow_names = [get_workflow_name(w) for w in existing_workflows]
+    workflows = load_workflows_from_db("all")
+    existing_workflows = []
+    existing_workflow_names = []
+    existing_workflow_name_to_id = {}
+    max_id = 0
+    for workflow_item in workflows:
+        task = workflow_item.get("task", "")
+        workflow_text = workflow_item.get("content", '')
+        existing_workflows.append(workflow_text)
+        existing_workflow_names.append(task)
+        existing_workflow_name_to_id[task] = workflow_item.get("id", None)
+        max_id = max(max_id, workflow_item.get("id", 0))
+    
+    print(f"Existing workflows: {existing_workflows}")
+    print(f"Existing workflow names: {existing_workflow_names}")
 
     # update workflows
-    new_workflows = []
     for w in workflows:
         add_new, names_to_remove = update_workflows(w, existing_workflows)
-        existing_workflows = [
-            ew for n,ew in zip(existing_workflow_names, existing_workflows)
-            if n not in names_to_remove
-        ]
-        if add_new: new_workflows.append(w)
-
-    # rewrite the entire workflow memory
-    with open(args.write_workflow_path, 'w') as fw:
-        fw.write('\n\n'.join(existing_workflows + new_workflows))
+        for name in names_to_remove:
+            # delete the workflow from the database
+            workflow_id = existing_workflow_name_to_id[name]
+            if workflow_id is not None:
+                delete_workflow_by_id(workflow_id)
+                print(f"Deleted workflow with ID: {workflow_id}")
+            else:
+                print(f"Workflow name '{name}' not found in existing workflows.")
+        if add_new: 
+            # add the new workflow to the database
+            add_workflow_to_db({
+                'task': get_workflow_name(w),
+                'workflow_lines': w.split('\n'),
+                'id': max_id + 1
+            })
+            max_id += 1
 
 
 # %% Overall pipeline
@@ -199,19 +234,18 @@ if __name__ == "__main__":
     parser.add_argument("--num_responses", type=int, default=1, help="Number of responses to generate.")
     parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for sampling.")
 
-    parser.add_argument("--sys_msg_path", type=str, default="induce/promptsystem_message_memory.txt")
-    parser.add_argument("--instruction_path", type=str, default="induce/promptinstruction_memory.txt")
-    parser.add_argument("--few_shot_path", type=str, default="induce/promptshopping_memory.md")
-    parser.add_argument("--test_query_path", type=str, default="induce/prompttest_query.txt")
+    parser.add_argument("--sys_msg_path", type=str, default="induce/prompt/system_message_memory.txt")
+    parser.add_argument("--instruction_path", type=str, default="induce/prompt/instruction_memory.txt")
+    parser.add_argument("--few_shot_path", type=str, default="induce/prompt/shopping_memory.md")
+    parser.add_argument("--test_query_path", type=str, default="induce/prompt/test_query.txt")
 
     parser.add_argument("--template_id", type=str, default=None)
     parser.add_argument("--website", type=str, required=True,
-                        choices=["shopping", "admin", "reddit", "gitlab", "map"])
+                        choices=["shopping", "admin", "reddit", "gitlab", "map", 'all'])
     parser.add_argument("--config_dir", type=str, default="config_files")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--result_id_list", type=str, nargs="+", default=None, help="E.g., '110_2_0 111_1'.")
 
-    parser.add_argument("--write_workflow_path", type=str, default=None)
     parser.add_argument("--write_tests_dir", type=str, default="debug_actions")
     parser.add_argument("--eval_with_gold", action="store_true")
     args = parser.parse_args()
@@ -219,9 +253,6 @@ if __name__ == "__main__":
     if args.model == "claude":
         args.model = "litellm/neulab/claude-3-5-sonnet-20241022"
     args.model = args.model.replace("litellm", "openai")
-
-    if args.write_workflow_path is None:
-        args.write_workflow_path = os.path.join("workflows", f"{args.website}.txt")
 
     # decide path for entire model output
     args = get_output_dir(args, key="workflow")
