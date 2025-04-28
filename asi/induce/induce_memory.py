@@ -65,6 +65,7 @@ def induce_workflows() -> list[str]:
     
     # load existing workflows
     existing_workflows = '\n'.join([workflow['content'] for workflow in load_workflows_from_db(args.website)])
+    print(f"Existing workflows loaded in the new way: {existing_workflows}")
 
 
     messages = [{"role": "system", "content": open(args.sys_msg_path).read()}]
@@ -126,8 +127,8 @@ def update_workflows(workflow: str, existing_workflows: list[str]) -> tuple[bool
     """
     name = get_workflow_name(workflow)
     print(f"Workflow in update_workflows: {workflow}")
-    print(f"Workflow in update_workflows: {name}")
-    print(f"Existing Workflows: {existing_workflows}")
+    print(f"Workflow name in update_workflows: {name}")
+    print(f"Existing Workflows in update_workflows: {existing_workflows}")
     for ew in existing_workflows:
         ew_name = get_workflow_name(ew)
         messages = [
@@ -189,12 +190,12 @@ def write_workflows(response: str) -> None:
     print(f"Induced workflows: {workflows}")
 
     # load existing workflows
-    workflows = load_workflows_from_db("all")
+    all_workflows = load_workflows_from_db("all")
     existing_workflows = []
     existing_workflow_names = []
     existing_workflow_name_to_id = {}
     max_id = 0
-    for workflow_item in workflows:
+    for workflow_item in all_workflows:
         task = workflow_item.get("task", "")
         workflow_text = workflow_item.get("content", '')
         existing_workflows.append(workflow_text)
@@ -224,6 +225,7 @@ def write_workflows(response: str) -> None:
                 'id': max_id + 1
             })
             max_id += 1
+            print(f"Added new workflow with ID: {max_id}")
 
 
 # %% Overall pipeline
