@@ -38,7 +38,7 @@ def run_vanilla():
 
 def run_awm():
 
-    debug_mode = False
+    debug_mode = True
     task_id_list = parse_task_ids(args.task_ids)
 
     for tid in task_id_list:
@@ -51,9 +51,10 @@ def run_awm():
             "--task_id", tid,
             "--task_type", "all",
             "--natural_language_description", natural_language_description,
-            "--use_top_k",
-            "--distance_threshold", "1.0"
-        ])
+            "--use_distance",
+            "--distance_threshold", "2.0"
+
+            ])
         process.wait()
         if debug_mode:
             input("[0] Completed workflow retrieval")
@@ -92,7 +93,7 @@ def run_awm():
 
         process = Popen([
             "python", "-m", "induce.induce_memory",
-            "--website", 'all',
+            "--website", args.website,
             "--result_id_list", f'results/webarena.{tid}'
         ])
         process.wait()  # write to 'workflows/{args.website}.txt'
@@ -328,7 +329,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment", type=str, required=True,
                         choices=["vanilla", "awm", "asi", "mem_asi", "veri_program", "veri_text"])
     parser.add_argument("--website", type=str, required=True, default='all',
-                        choices=["shopping", "admin", "reddit", "gitlab", "map"])
+                        choices=["shopping", "admin", "reddit", "gitlab", "map", 'all'])
     parser.add_argument("--task_ids", type=str, required=True,
                         help="xxx-xxx,xxx-xxx")
 
