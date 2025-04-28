@@ -10,6 +10,7 @@ from PIL import Image
 
 from browsergym.experiments import AbstractAgentArgs, Agent
 from browsergym.utils.obs import flatten_axtree_to_str, flatten_dom_to_str, prune_html
+from reformat_workflow import load_and_concatenate_workflows
 
 from custom_action_set import CustomActionSet
 from actions import ACTION_DICT
@@ -90,12 +91,11 @@ class DemoAgent(Agent):
         
         if memory is None: self.memory = None
         else: 
-            paths = memory.split(' ')
-            self.memory = '\n\n'.join([open(p, 'r').read() for p in paths])
-            if self.memory.strip() == "":
-                self.memory = None
+            self.memory = load_and_concatenate_workflows(memory)
+            print("Memory loaded in DemoAgent:", self.memory)
 
     def get_action(self, obs: dict) -> tuple[str, dict]:
+        stats = {}
         if len(self.actions) == 0 or (self.num_actions > (len(self.actions) - 1)):
             system_msgs = []
             user_msgs = []
@@ -351,6 +351,10 @@ class DemoAgent(Agent):
                     temperature=0.0,
                 )
                 action = response.choices[0].message.content
+                stats['completion_tokens'] = response.usage.completion_tokens
+                stats['total_tokens'] = response.usage.total_tokens
+                stats['prompt_tokens'] = response.usage.prompt_tokens
+
                 action = action.replace('```python', '```')
             except:
                 action = ""
@@ -363,7 +367,7 @@ class DemoAgent(Agent):
 
         self.action_history.append(action)
 
-        return action, {}
+        return action, {'stats': stats}
 
 
 
