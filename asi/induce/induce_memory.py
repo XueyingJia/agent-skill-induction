@@ -64,7 +64,7 @@ def induce_workflows() -> list[str]:
         fw.write(test_query)
     
     # load existing workflows
-    existing_workflows = '\n'.join([workflow['content'] for workflow in load_workflows_from_db(args.website)])
+    existing_workflows = '\n'.join([workflow['content'] for workflow in load_workflows_from_db()])
     print(f"Existing workflows loaded in the new way: {existing_workflows}")
 
 
@@ -190,7 +190,7 @@ def write_workflows(response: str) -> None:
     print(f"Induced workflows: {workflows}")
 
     # load existing workflows
-    all_workflows = load_workflows_from_db("all")
+    all_workflows = load_workflows_from_db()
     existing_workflows = []
     existing_workflow_names = []
     existing_workflow_name_to_id = {}
@@ -223,7 +223,7 @@ def write_workflows(response: str) -> None:
                 'task': get_workflow_name(w),
                 'workflow_lines': w.split('\n'),
                 'id': max_id + 1
-            })
+            }, task_type=args.website)
             max_id += 1
             print(f"Added new workflow with ID: {max_id}")
 
