@@ -160,6 +160,18 @@ def reset_db(task_type):
     )
     vectorstore.reset_collection()
 
+    metadata_file = "chroma.json"
+    stats = {"vectordb_stats": {}}
+    stats["vectordb_stats"][task_type] = {
+        "total_workflows": 0,
+        "total_tokens_used": 0,
+        "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        'query_tokens_used': 0,
+    }
+    with open(metadata_file, 'w') as f:
+        json.dump(stats, f, indent=4, ensure_ascii=False)
+    print(f"Reset the vector store for task type: {task_type}")
+
 def delete_workflow_by_id(task_type, workflow_id):
     """
     Delete a workflow with a specific ID from the vector store.
@@ -329,25 +341,6 @@ def load_workflows_from_db(task_type='all'):
     except Exception as e:
         print(f"Error loading workflows from database: {e}")
         return []
-    
-# reset the collection
-# task_type = "all"
-# reset_db(task_type)
-
-# test query the vector store
-# res, query_tokens_used, retrieved_ids = retrieve_workflow('1', 'all', "Compare the time for walking and driving route from 5000 Fifth Avenue, Pittsburgh to UPMC family health center", use_distance=True, distance_threshold=10.0)
-# print("query_tokens_used:", query_tokens_used)
-# print("Retrieved IDs:", retrieved_ids)
-# print("Result:", res)
-
-# # visualize the vector store data
-# visualize_vectorstore_data("all")
-
-# # delete a workflow by ID
-# delete_workflow_by_id("all", 0)
-# visualize_vectorstore_data("all")
-
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Retrieve workflows from the vector store.")
