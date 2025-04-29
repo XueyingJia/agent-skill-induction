@@ -200,13 +200,14 @@ def delete_workflow_by_id(task_type, workflow_id):
         print(f"Error deleting workflow: {e}")
         return False
     
-def add_workflow_to_db(workflow_data, task_type='all'):
+def add_workflow_to_db(workflow_data, task_type, retrieval_type='all'):
     """
     Add a single workflow to the vector store.
     
     Args:
-        task_type: Type of the task, determines the database path
+        task_type: Type of the task, determines the source of the workflow
         workflow_data: Dictionary containing 'id', 'task', and 'workflow_lines' keys
+        retrieval_type: Type of retrieval, determines the database path
         
     Returns:
         bool: True if added successfully, False if an error occurred
@@ -221,7 +222,7 @@ def add_workflow_to_db(workflow_data, task_type='all'):
                 
         # Initialize the vector store
         vectorstore = Chroma(
-            persist_directory=f"chroma_db_{task_type}",
+            persist_directory=f"chroma_db_{retrieval_type}",
             embedding_function=embeddings
         )
         
@@ -233,6 +234,7 @@ def add_workflow_to_db(workflow_data, task_type='all'):
                 "id": workflow_data['id'],
                 "task": workflow_data['task'],
                 "tokens_used": tokens_used,
+                "website": task_type
             }
         )
                 
@@ -255,9 +257,9 @@ def add_workflow_to_db(workflow_data, task_type='all'):
             # Initialize metadata file if it doesn't exist
             stats = {"vectordb_stats": {}}
             
-        # Update stats for this task_type
-        if task_type not in stats["vectordb_stats"]:
-            stats["vectordb_stats"][task_type] = {
+        # Update stats for this retrieval_type
+        if retrieval_type not in stats["vectordb_stats"]:
+            stats["vectordb_stats"][retrieval_type] = {
                 "total_workflows": 1,
                 "total_tokens_used": tokens_used,
                 "last_updated": now,
@@ -266,9 +268,9 @@ def add_workflow_to_db(workflow_data, task_type='all'):
         else:
             # Check if we're updating an existing workflow or adding a new one
             collection_data = vectorstore.get()
-            stats["vectordb_stats"][task_type]["total_workflows"] += 1
-            stats["vectordb_stats"][task_type]["total_tokens_used"] += tokens_used
-            stats["vectordb_stats"][task_type]["last_updated"] = now
+            stats["vectordb_stats"][retrieval_type]["total_workflows"] += 1
+            stats["vectordb_stats"][retrieval_type]["total_tokens_used"] += tokens_used
+            stats["vectordb_stats"][retrieval_type]["last_updated"] = now
         
         # Write the updated stats back to the metadata file
         with open(metadata_file, 'w') as f:
@@ -280,7 +282,7 @@ def add_workflow_to_db(workflow_data, task_type='all'):
         print(f"Error adding workflow: {e}")
         return False
 
-def load_workflows_from_db(task_type):
+def load_workflows_from_db(task_type='all'):
     """
     Load all workflows from the vector database for a specific task type.
     
