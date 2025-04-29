@@ -172,7 +172,7 @@ def reset_db(task_type):
         json.dump(stats, f, indent=4, ensure_ascii=False)
     print(f"Reset the vector store for task type: {task_type}")
 
-def delete_workflow_by_id(task_type, workflow_id):
+def delete_workflow_by_id(workflow_id, task_type='all'):
     """
     Delete a workflow with a specific ID from the vector store.
     
