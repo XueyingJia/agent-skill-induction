@@ -89,6 +89,7 @@ def retrieve_workflow(task_id, task_type, natural_language_description, use_all=
     else:      
         stats["vectordb_stats"][task_type]["query_tokens_used"] += query_tokens_used
         stats["vectordb_stats"][task_type]["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    
     with open(metadata_file, 'w') as f:
         json.dump(stats, f, indent=4, ensure_ascii=False)
 
@@ -143,7 +144,7 @@ def visualize_vectorstore_data(task_type):
     # Print the documents
     for doc, metadata in zip(documents, metadatas):
         print(f"id: {metadata['id']}")
-        print(f"workflow: {doc[:100]}")
+        print(f"workflow: {doc}")
         print("---"*10)
 
 def reset_db(task_type):
@@ -199,7 +200,7 @@ def delete_workflow_by_id(task_type, workflow_id):
         print(f"Error deleting workflow: {e}")
         return False
     
-def add_workflow_to_db(task_type, workflow_data):
+def add_workflow_to_db(workflow_data, task_type='all'):
     """
     Add a single workflow to the vector store.
     
@@ -269,6 +270,10 @@ def add_workflow_to_db(task_type, workflow_data):
             stats["vectordb_stats"][task_type]["total_tokens_used"] += tokens_used
             stats["vectordb_stats"][task_type]["last_updated"] = now
         
+        # Write the updated stats back to the metadata file
+        with open(metadata_file, 'w') as f:
+            json.dump(stats, f, indent=4, ensure_ascii=False)
+
         return True
         
     except Exception as e:
