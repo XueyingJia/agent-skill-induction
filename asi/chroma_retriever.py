@@ -49,7 +49,8 @@ def retrieve_workflow(task_id, task_type, natural_language_description, use_all=
     # Initialize or populate the vector store
     vectorstore = Chroma(
         persist_directory=f"chroma_db_{task_type}",
-        embedding_function=embeddings
+        embedding_function=embeddings,
+        collection_metadata={"hnsw:space": "cosine"}
     )
     collection_data = vectorstore.get()
     if not collection_data.get("ids", []):
@@ -128,7 +129,8 @@ def visualize_vectorstore_data(task_type):
 
     vectorstore = Chroma(
         persist_directory=f"chroma_db_{task_type}",
-        embedding_function=embeddings
+        embedding_function=embeddings,
+        collection_metadata={"hnsw:space": "cosine"}
     )
     # Ensure the vector store is populated
     collection_data = vectorstore.get()
@@ -153,7 +155,8 @@ def reset_db(task_type):
         shutil.rmtree(db_path)
     vectorstore = Chroma(
         persist_directory=f"chroma_db_{task_type}",
-        embedding_function=embeddings
+        embedding_function=embeddings,
+        collection_metadata={"hnsw:space": "cosine"}
     )
     vectorstore.reset_collection()
 
@@ -172,7 +175,8 @@ def delete_workflow_by_id(task_type, workflow_id):
         # Initialize the vector store
         vectorstore = Chroma(
             persist_directory=f"chroma_db_{task_type}",
-            embedding_function=embeddings
+            embedding_function=embeddings,
+            collection_metadata={"hnsw:space": "cosine"}
         )
         
         # Get all documents
@@ -223,7 +227,8 @@ def add_workflow_to_db(workflow_data, task_type, retrieval_type='all'):
         # Initialize the vector store
         vectorstore = Chroma(
             persist_directory=f"chroma_db_{retrieval_type}",
-            embedding_function=embeddings
+            embedding_function=embeddings,
+            collection_metadata={"hnsw:space": "cosine"}
         )
         
         # Create document
@@ -296,7 +301,8 @@ def load_workflows_from_db(task_type='all'):
         # Initialize the vector store
         vectorstore = Chroma(
             persist_directory=f"chroma_db_{task_type}",
-            embedding_function=embeddings
+            embedding_function=embeddings,
+            collection_metadata={"hnsw:space": "cosine"}
         )
         
         # Get all documents
