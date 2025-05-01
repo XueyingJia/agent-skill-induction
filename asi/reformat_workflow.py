@@ -19,7 +19,7 @@ def load_and_concatenate_workflows(json_path):
         workflows = data.get("retrieved_workflows", [])
         
         # Concatenate the workflow texts
-        concatenated_workflows = ""
+        concatenated_workflows = "Here are some relevant workflows for your reference:\n\n"
         for workflow in workflows:
             workflow_text = workflow.get("workflow", "")
             
