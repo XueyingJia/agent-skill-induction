@@ -54,6 +54,30 @@ def get_test_query(result_dir_list: str, config_dir: str) -> str | None:
     query = f"## Task: {task}\n" + '\n\n'.join(examples)
     return query
 
+def store_token_usage(response: litellm.Response, type: str) -> None:
+    print(f"Storing token usage for type: {type}")
+    usage_data = response.usage
+    print(f"Token usage: {usage_data}")
+    induce_token_tracker = 'induce_token_tracker'
+    usage_file_path = os.path.join(induce_token_tracker, f"{args.website}.json")
+    print(f"Usage file path: {usage_file_path}")
+    ids = [file.split('.')[-1] for file in args.result_id_list]
+    print(f"IDs: {ids}")
+    token_type = f"{type}_token"
+    if os.path.exists(usage_file_path):
+        try:
+            with open(usage_file_path, 'r') as usage_file:
+                existing_data = json.load(usage_file)
+            existing_data[token_type]["total_token"] += usage_data["total_tokens"]
+            existing_data[token_type]["prompt_token"] += usage_data["prompt_tokens"]
+            existing_data[token_type]["completion_token"] += usage_data["completion_tokens"]
+            existing_data[f'{type}_workflow_id'].append(ids)
+        except Exception as e:
+            raise ValueError(f"Error reading or updating JSON file: {e}")
+    with open(usage_file_path, 'w') as usage_file:
+            json.dump(existing_data, usage_file, indent=4)
+    print(f"Usage data saved to {usage_file_path}")
+
 
 def induce_workflows() -> list[str]:
     result_dir_list = args.result_id_list
@@ -65,8 +89,6 @@ def induce_workflows() -> list[str]:
     
     # load existing workflows
     existing_workflows = '\n'.join([workflow['content'] for workflow in load_workflows_from_db()])
-    print(f"Existing workflows loaded in the new way: {existing_workflows}")
-
 
     messages = [{"role": "system", "content": open(args.sys_msg_path).read()}]
     messages += [{"role": "user", "content": open(args.instruction_path).read()}]
@@ -84,6 +106,8 @@ def induce_workflows() -> list[str]:
             temperature=args.temperature,
             n=args.num_responses,
         )
+        store_token_usage(response, "induce")
+
         for i, resp in enumerate(response.choices):
             curr_resp = resp.message.content
             curr_path = os.path.join(args.output_dir, f"{i}.md")
@@ -99,6 +123,8 @@ def induce_workflows() -> list[str]:
                 messages=messages,
                 temperature=args.temperature,
             )
+            store_token_usage(response, "induce")
+
             curr_resp = response.choices[0].message.content
             curr_path = os.path.join(args.output_dir, f"{i}.md")
             with open(curr_path, 'w') as fw:
@@ -111,12 +137,10 @@ from induce.utils import extract_code_pieces
 
 def get_workflow_name(workflow: str) -> str:
     """Get the name of the workflow."""
-    print(f"Workflow in get_workflow_name: {workflow}")
     name = workflow.split('\n')[0].lstrip("Task: ").strip()
     if 'Action Trajectory' in name:
         name = name.split('Action Trajectory')[0].strip()
     return name
-
 
 def update_workflows(workflow: str, existing_workflows: list[str]) -> tuple[bool, list[str]]:
     """Update the existing workflows given the potentially topically similar new item.
@@ -143,6 +167,7 @@ def update_workflows(workflow: str, existing_workflows: list[str]) -> tuple[bool
             messages=messages,
             temperature=args.temperature,
         )
+        store_token_usage(response, "update")
         response = response.choices[0].message.content
         
         if 'yes' in response: yes_index = response.index('yes')
@@ -162,7 +187,6 @@ def update_workflows(workflow: str, existing_workflows: list[str]) -> tuple[bool
     print(f"Checking Overlap between [{name}] & [{len(existing_workflows)} Existing Workflows] => NO")
     return True, []
 
-
 def get_better_workflow(workflow1: str, workflow2: str) -> str:
     """Select the better workflow between two topically-overlapping workflows."""
     messages = [
@@ -177,6 +201,7 @@ def get_better_workflow(workflow1: str, workflow2: str) -> str:
         messages=messages,
         temperature=args.temperature,
     )
+    store_token_usage(response, "compare")
     response = response.choices[0].message.content
     if "workflow 1" in response.lower(): return workflow1
     elif "workflow 2" in response.lower(): return workflow2
@@ -275,4 +300,3 @@ if __name__ == "__main__":
         write_workflows(resp)
 
         print(f"**Finish Evaluating Response {i} **\n\n")
-        cont = input("Continue? [y/n]")
